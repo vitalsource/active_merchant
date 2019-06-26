@@ -5,13 +5,14 @@ module ActiveMerchant #:nodoc:
       # https://developer.apple.com/library/ios/documentation/PassKit/Reference/PKPaymentToken_Ref/
       # https://developer.apple.com/library/IOs//documentation/PassKit/Reference/PaymentTokenJSON/PaymentTokenJSON.html
 
-      attr_reader :payment_instrument_name, :payment_network
+      attr_reader :payment_instrument_name, :payment_network, :payment_data_base64
       attr_accessor :transaction_identifier
 
       def initialize(payment_data, options = {})
         super
         @payment_instrument_name = @metadata[:payment_instrument_name]
         @payment_network = @metadata[:payment_network]
+        @payment_data_base64 = @metadata[:payment_data_base64]
       end
 
       def type

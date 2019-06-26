@@ -38,6 +38,7 @@ module ActiveMerchant #:nodoc:
       @@credit_card_codes = {
         :visa  => '001',
         :master => '002',
+        :mastercard => '002',
         :american_express => '003',
         :discover => '004',
         :diners_club => '005',
@@ -258,11 +259,17 @@ module ActiveMerchant #:nodoc:
         add_payment_method_or_subscription(xml, money, creditcard_or_reference, options)
         add_decision_manager_fields(xml, options)
         add_mdd_fields(xml, options)
-        add_auth_service(xml, creditcard_or_reference, options)
-        add_threeds_services(xml, options)
-        add_payment_network_token(xml) if network_tokenization?(creditcard_or_reference)
-        add_business_rules_data(xml, creditcard_or_reference, options)
-        add_stored_credential_options(xml, options)
+        if apple_pay_token?(creditcard_or_reference)
+          add_apple_pay_token(xml, creditcard_or_reference, options)
+          add_payment_network_token(xml)
+          add_payment_solution(xml)
+        else
+          add_auth_service(xml, creditcard_or_reference, options)
+          add_threeds_services(xml, options)
+          add_payment_network_token(xml) if network_tokenization?(creditcard_or_reference)
+          add_business_rules_data(xml, creditcard_or_reference, options)
+          add_stored_credential_options(xml, options)
+        end
         xml.target!
       end
 
@@ -517,6 +524,7 @@ module ActiveMerchant #:nodoc:
         else
           xml.tag! 'ccAuthService', {'run' => 'true'} do
             check_for_stored_cred_commerce_indicator(xml, options)
+            add_auth_commerce_indicator(xml, payment_method.payment_network) if apple_pay_token?(payment_method)
           end
         end
       end
@@ -538,6 +546,10 @@ module ActiveMerchant #:nodoc:
 
       def network_tokenization?(payment_method)
         payment_method.is_a?(NetworkTokenizationCreditCard)
+      end
+
+      def apple_pay_token?(payment_method)
+        payment_method.is_a?(ApplePayPaymentToken)
       end
 
       def add_auth_network_tokenization(xml, payment_method, options)
@@ -568,10 +580,39 @@ module ActiveMerchant #:nodoc:
         end
       end
 
+      def add_auth_commerce_indicator(xml, payment_network)
+        case payment_network.downcase.to_sym
+        when :visa
+          xml.tag!('commerceIndicator', 'vbv')
+        when :master
+          xml.tag!('commerceIndicator', 'spa')
+        when :american_express
+          xml.tag!('commerceIndicator', 'aesk')
+        end
+      end
+
       def add_payment_network_token(xml)
         xml.tag! 'paymentNetworkToken' do
           xml.tag!('transactionType', '1')
         end
+      end
+
+      def add_apple_pay_token(xml, payment_method, options)
+        return unless apple_pay_token?(payment_method)
+
+        xml.tag! 'encryptedPayment' do
+          xml.tag!('descriptor', 'RklEPUNPTU1PTi5BUFBMRS5JTkFQUC5QQVlNRU5U')
+          xml.tag!('data', payment_method.payment_data_base64) #insert paymentData in correct format
+          xml.tag!('encoding', 'Base64')
+        end
+
+        xml.tag! 'card' do
+          xml.tag! 'cardType', @@credit_card_codes[payment_method.payment_network.downcase.to_sym]
+        end
+
+        add_auth_service(xml, payment_method, options)
+
+        xml.tag! 'ccCaptureService', {'run' => 'true'} if options[:capture]
       end
 
       def add_capture_service(xml, request_id, request_token)
@@ -673,12 +714,19 @@ module ActiveMerchant #:nodoc:
           add_address(xml, payment_method_or_reference, options[:billing_address], options)
           add_purchase_data(xml, money, true, options)
           add_check(xml, payment_method_or_reference)
+        elsif card_brand(payment_method_or_reference) == 'apple_pay'
+          add_address(xml, name_from_options(options), options[:billing_address], options)
+          add_purchase_data(xml, money, true, options)
         else
           add_address(xml, payment_method_or_reference, options[:billing_address], options)
           add_address(xml, payment_method_or_reference, options[:shipping_address], options, true)
           add_purchase_data(xml, money, true, options)
           add_creditcard(xml, payment_method_or_reference)
         end
+      end
+
+      def add_payment_solution(xml)
+        xml.tag!('paymentSolution', '001')
       end
 
       def add_validate_pinless_debit_service(xml)
@@ -801,6 +849,13 @@ module ActiveMerchant #:nodoc:
       def reason_message(reason_code)
         return if reason_code.blank?
         @@response_codes[:"r#{reason_code}"]
+      end
+
+      def name_from_options(options)
+        OpenStruct.new(
+          first_name: options[:first_name],
+          last_name: options[:last_name]
+        )
       end
 
       def authorization_from(response, action, amount, options)
