@@ -302,6 +302,10 @@ module ActiveMerchant #:nodoc:
         add_mdd_fields(xml, options)
         if !payment_method_or_reference.is_a?(String) && card_brand(payment_method_or_reference) == 'check'
           add_check_service(xml)
+        elsif apple_pay_token?(payment_method_or_reference)
+          add_apple_pay_token(xml, payment_method_or_reference, options)
+          add_payment_network_token(xml)
+          add_payment_solution(xml)
         else
           add_purchase_service(xml, payment_method_or_reference, options)
           add_threeds_services(xml, options)
