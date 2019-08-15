@@ -590,6 +590,8 @@ module ActiveMerchant #:nodoc:
           xml.tag!('commerceIndicator', 'vbv')
         when :master
           xml.tag!('commerceIndicator', 'spa')
+        when :discover
+          xml.tag!('commerceIndicator', 'dipb')
         when :american_express
           xml.tag!('commerceIndicator', 'aesk')
         end
